@@ -227,6 +227,34 @@ export function upsertTitleTranslation(originalTitle, translatedTitle) {
   ).run(original, translated);
 }
 
+export function upsertTitleTranslations(pairs = []) {
+  const rows = (pairs || [])
+    .map((pair) => ({
+      original: normalizeTranslationTitle(pair?.original),
+      translated: normalizeTranslationTitle(pair?.translated)
+    }))
+    .filter((pair) => pair.original && pair.translated && pair.original !== pair.translated);
+
+  if (!rows.length) return 0;
+
+  const stmt = db.prepare(
+    `INSERT INTO title_translations (original_title, translated_title)
+     VALUES (?, ?)
+     ON CONFLICT(original_title) DO UPDATE SET
+       translated_title = excluded.translated_title,
+       updated_at = CURRENT_TIMESTAMP`
+  );
+
+  const tx = db.transaction(() => {
+    for (const row of rows) {
+      stmt.run(row.original, row.translated);
+    }
+  });
+
+  tx();
+  return rows.length;
+}
+
 export function getAllGoods(limit, offset) {
   const safeLimit = toSafeLimit(limit);
   const safeOffset = toSafeOffset(offset);

@@ -10,7 +10,8 @@ import {
   getRecentGoods,
   getStats,
   searchGoods,
-  upsertTitleTranslation
+  upsertTitleTranslation,
+  upsertTitleTranslations
 } from './db/database.js';
 import { importFromJson } from './utils/importer.js';
 import { createHash, timingSafeEqual } from 'crypto';
@@ -561,7 +562,7 @@ await app.register(cors, {
 
 await app.register(rateLimit, {
   global: true,
-  max: 120,
+  max: 150,
   timeWindow: '1 minute'
 });
 
@@ -635,7 +636,8 @@ function parsePositiveInt(value, fallback, max = Number.MAX_SAFE_INTEGER) {
   return Math.min(parsed, max);
 }
 
-async function translateToEnglish(text) {
+async function translateToEnglish(text, options = {}) {
+  const { skipPersistentLookup = false, persistResult = true } = options;
   const source = `${text || ''}`.trim();
   if (!source) return '';
 
@@ -648,14 +650,16 @@ async function translateToEnglish(text) {
     return cached;
   }
 
-  try {
-    const persisted = getCachedTitleTranslation(source);
-    if (persisted) {
-      setCachedTranslation(source, persisted);
-      return persisted;
+  if (!skipPersistentLookup) {
+    try {
+      const persisted = getCachedTitleTranslation(source);
+      if (persisted) {
+        setCachedTranslation(source, persisted);
+        return persisted;
+      }
+    } catch (error) {
+      app.log.warn({ err: error }, 'failed to read translation cache');
     }
-  } catch (error) {
-    app.log.warn({ err: error }, 'failed to read translation cache');
   }
 
   if (translateInFlight.has(source)) {
@@ -667,7 +671,9 @@ async function translateToEnglish(text) {
     const dictionaryCandidate = normalizeTranslatedTitle(applyTranslationDictionary(cleanedSource));
     if (dictionaryCandidate && !containsJapanese(dictionaryCandidate)) {
       setCachedTranslation(source, dictionaryCandidate);
-      persistTitleTranslationSafe(source, dictionaryCandidate);
+      if (persistResult) {
+        persistTitleTranslationSafe(source, dictionaryCandidate);
+      }
       return dictionaryCandidate;
     }
 
@@ -699,7 +705,9 @@ async function translateToEnglish(text) {
 
     const best = pickBestTranslation(source, candidates) || source;
     setCachedTranslation(source, best);
-    persistTitleTranslationSafe(source, best);
+    if (persistResult) {
+      persistTitleTranslationSafe(source, best);
+    }
     return best;
   })();
 
@@ -805,7 +813,7 @@ app.get('/api/stats', async () => getStats());
 app.post('/api/goods/by-urls', {
   config: {
     rateLimit: {
-      max: 30,
+      max: 40,
       timeWindow: '1 minute'
     }
   }
@@ -820,7 +828,7 @@ app.post('/api/goods/by-urls', {
 app.post('/api/translate/titles', {
   config: {
     rateLimit: {
-      max: 60,
+      max: 80,
       timeWindow: '1 minute'
     }
   }
@@ -839,11 +847,20 @@ app.post('/api/translate/titles', {
   const translatedPending = await mapWithConcurrency(
     pending,
     async (title) => {
-      const translated = await translateToEnglish(title);
+      const translated = await translateToEnglish(title, {
+        skipPersistentLookup: true,
+        persistResult: false
+      });
       return { original: title, translated };
     },
     TRANSLATE_CONCURRENCY
   );
+
+  try {
+    upsertTitleTranslations(translatedPending);
+  } catch (error) {
+    app.log.warn({ err: error }, 'failed to persist translation cache batch');
+  }
 
   const pendingMap = new Map(translatedPending.map((row) => [row.original, row.translated]));
 
@@ -858,7 +875,7 @@ app.post('/api/translate/titles', {
 app.post('/api/feedback', {
   config: {
     rateLimit: {
-      max: 20,
+      max: 25,
       timeWindow: '1 minute'
     }
   }
