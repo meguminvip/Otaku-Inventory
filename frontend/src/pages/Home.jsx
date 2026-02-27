@@ -51,6 +51,13 @@ export default function Home({ initialFavoritesOnly = false }) {
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(initialFavoritesOnly);
   const isInitialLoading = loading && goods.length === 0;
 
+  const getRequestErrorMessage = (error) => {
+    if (error?.response?.status === 429) {
+      return t('rate_limited_error');
+    }
+    return t('load_error');
+  };
+
   const syncLastUpdated = (value) => {
     if (!value) return;
     localStorage.setItem(LAST_UPDATED_KEY, value);
@@ -129,9 +136,9 @@ export default function Home({ initialFavoritesOnly = false }) {
       const nextStats = statsRes.data || null;
       setStats(nextStats);
       syncLastUpdated(nextStats?.last_updated);
-    } catch {
+    } catch (error) {
       if (requestId !== goodsRequestIdRef.current) return;
-      setErrorMessage(t('load_error'));
+      setErrorMessage(getRequestErrorMessage(error));
       setGoods([]);
       setPage(1);
       setTotalPages(1);
@@ -163,9 +170,9 @@ export default function Home({ initialFavoritesOnly = false }) {
       syncLastUpdated(nextStats?.last_updated);
       setPage(1);
       setTotalPages(1);
-    } catch {
+    } catch (error) {
       if (requestId !== goodsRequestIdRef.current) return;
-      setErrorMessage(t('load_error'));
+      setErrorMessage(getRequestErrorMessage(error));
       setGoods([]);
       setPage(1);
       setTotalPages(1);
@@ -256,9 +263,9 @@ export default function Home({ initialFavoritesOnly = false }) {
       syncFavoriteItemCache(res.data.items || []);
       setPage(1);
       setTotalPages(1);
-    } catch {
+    } catch (error) {
       if (requestId !== goodsRequestIdRef.current) return;
-      setErrorMessage(t('load_error'));
+      setErrorMessage(getRequestErrorMessage(error));
       setGoods([]);
       setPage(1);
       setTotalPages(1);

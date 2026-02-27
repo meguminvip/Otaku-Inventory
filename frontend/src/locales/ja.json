@@ -17,6 +17,7 @@
   "loading_initial": "ロード中...",
   "loading_update": "更新中...",
   "load_error": "データの取得に失敗しました。時間をおいて再度お試しください。",
+  "rate_limited_error": "アクセスが集中しています。しばらく待ってから再度お試しください。",
   "empty_default": "該当する商品がありません。",
   "empty_favorite": "お気に入り登録した商品はまだありません。",
   "pager_prev": "前へ",

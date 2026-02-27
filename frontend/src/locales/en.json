@@ -17,6 +17,7 @@
   "loading_initial": "Loading...",
   "loading_update": "Updating...",
   "load_error": "Failed to load data. Please try again in a moment.",
+  "rate_limited_error": "Too many requests right now. Please wait a moment and try again.",
   "empty_default": "No items matched your filters.",
   "empty_favorite": "No favorites yet.",
   "pager_prev": "Prev",

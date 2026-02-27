@@ -32,7 +32,11 @@ export default function ContactPage() {
       openedAtRef.current = Date.now();
       setStatus(t('contact_success'));
     } catch (error) {
-      setStatus(`${t('contact_error_prefix')} ${error?.response?.data?.error || error.message}`);
+      if (error?.response?.status === 429) {
+        setStatus(t('rate_limited_error'));
+      } else {
+        setStatus(`${t('contact_error_prefix')} ${error?.response?.data?.error || error.message}`);
+      }
     } finally {
       setSending(false);
     }
