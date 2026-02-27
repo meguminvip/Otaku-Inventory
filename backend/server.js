@@ -2,7 +2,16 @@ import 'dotenv/config';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
-import { getGoodsByUrls, getGoodsPage, getRecentGoods, getStats, searchGoods } from './db/database.js';
+import {
+  getCachedTitleTranslation,
+  getCachedTitleTranslations,
+  getGoodsByUrls,
+  getGoodsPage,
+  getRecentGoods,
+  getStats,
+  searchGoods,
+  upsertTitleTranslation
+} from './db/database.js';
 import { importFromJson } from './utils/importer.js';
 import { createHash, timingSafeEqual } from 'crypto';
 import { dirname, join } from 'path';
@@ -209,6 +218,77 @@ function applyTranslationDictionary(value) {
   return next;
 }
 
+const TRANSLATION_HINT_WORDS = [
+  'KonoSuba',
+  'Megumin',
+  'Aqua',
+  'Darkness',
+  'Kazuma',
+  'Yunyun',
+  'Chomusuke',
+  'Acrylic',
+  'Figure',
+  'Keychain',
+  'Can Badge',
+  'Tapestry',
+  'Hoodie',
+  'T-Shirt',
+  'Pre-order',
+  'Sold Out'
+];
+
+function countJapaneseChars(value) {
+  const text = `${value || ''}`;
+  const matched = text.match(/[ぁ-んァ-ン一-龯]/g);
+  return matched ? matched.length : 0;
+}
+
+function containsJapanese(value) {
+  return countJapaneseChars(value) > 0;
+}
+
+function scoreTranslationQuality(source, translated) {
+  const output = `${translated || ''}`.trim();
+  if (!output) return Number.NEGATIVE_INFINITY;
+
+  const sourceText = `${source || ''}`.trim();
+  const sourceLen = Math.max(1, sourceText.length);
+  const outputLen = output.length;
+  const jpCount = countJapaneseChars(output);
+
+  let score = 0;
+  score -= jpCount * 3;
+
+  const lengthRatio = outputLen / sourceLen;
+  if (lengthRatio >= 0.45 && lengthRatio <= 2.5) score += 4;
+  if (lengthRatio >= 0.7 && lengthRatio <= 1.8) score += 3;
+
+  for (const hint of TRANSLATION_HINT_WORDS) {
+    if (output.includes(hint)) score += 1;
+  }
+
+  if (/\bundefined\b|\bnull\b/i.test(output)) score -= 8;
+  if (/\?{3,}/.test(output)) score -= 3;
+
+  return score;
+}
+
+function pickBestTranslation(source, candidates) {
+  let best = '';
+  let bestScore = Number.NEGATIVE_INFINITY;
+
+  for (const candidate of candidates) {
+    const normalized = normalizeTranslatedTitle(candidate);
+    const score = scoreTranslationQuality(source, normalized);
+    if (score > bestScore) {
+      best = normalized;
+      bestScore = score;
+    }
+  }
+
+  return best || '';
+}
+
 function normalizeTranslatedTitle(value) {
   return `${value || ''}`
     .replace(/［/g, '[')
@@ -259,9 +339,10 @@ async function fetchTranslatedText(url) {
     }
 
     const data = await res.json();
-    return Array.isArray(data?.[0])
+    const translated = Array.isArray(data?.[0])
       ? data[0].map((part) => part?.[0] || '').join('').trim()
       : '';
+    return normalizeTranslatedTitle(translated);
   } finally {
     clearTimeout(timeout);
   }
@@ -286,6 +367,20 @@ function setCachedTranslation(key, value) {
     if (oldest) {
       titleTranslationCache.delete(oldest);
     }
+  }
+}
+
+function shouldPersistTranslation(source, translated) {
+  if (!source || !translated) return false;
+  return `${source}`.trim() !== `${translated}`.trim();
+}
+
+function persistTitleTranslationSafe(source, translated) {
+  if (!shouldPersistTranslation(source, translated)) return;
+  try {
+    upsertTitleTranslation(source, translated);
+  } catch (error) {
+    app.log.warn({ err: error }, 'failed to persist translation cache');
   }
 }
 
@@ -540,12 +635,11 @@ function parsePositiveInt(value, fallback, max = Number.MAX_SAFE_INTEGER) {
   return Math.min(parsed, max);
 }
 
-// なんか翻訳されてないのをやっと修正
 async function translateToEnglish(text) {
   const source = `${text || ''}`.trim();
   if (!source) return '';
 
-  if (!/[^\x00-\x7F]/.test(source)) {
+  if (!containsJapanese(source)) {
     return source;
   }
 
@@ -554,19 +648,34 @@ async function translateToEnglish(text) {
     return cached;
   }
 
+  try {
+    const persisted = getCachedTitleTranslation(source);
+    if (persisted) {
+      setCachedTranslation(source, persisted);
+      return persisted;
+    }
+  } catch (error) {
+    app.log.warn({ err: error }, 'failed to read translation cache');
+  }
+
   if (translateInFlight.has(source)) {
     return translateInFlight.get(source);
   }
 
   const job = (async () => {
     const cleanedSource = preprocessTitleForTranslation(source) || source;
-    const dictionaryFirst = normalizeTranslatedTitle(applyTranslationDictionary(cleanedSource));
-    if (dictionaryFirst && !/[^\x00-\x7F]/.test(dictionaryFirst)) {
-      setCachedTranslation(source, dictionaryFirst);
-      return dictionaryFirst;
+    const dictionaryCandidate = normalizeTranslatedTitle(applyTranslationDictionary(cleanedSource));
+    if (dictionaryCandidate && !containsJapanese(dictionaryCandidate)) {
+      setCachedTranslation(source, dictionaryCandidate);
+      persistTitleTranslationSafe(source, dictionaryCandidate);
+      return dictionaryCandidate;
     }
 
     const endpoints = buildTranslateEndpoints(cleanedSource);
+    const candidates = [];
+    if (dictionaryCandidate) {
+      candidates.push(dictionaryCandidate);
+    }
 
     for (const url of endpoints) {
       try {
@@ -574,8 +683,9 @@ async function translateToEnglish(text) {
 
         if (translated) {
           const improved = normalizeTranslatedTitle(applyTranslationDictionary(translated) || translated);
-          setCachedTranslation(source, improved);
-          return improved;
+          if (improved) {
+            candidates.push(improved);
+          }
         }
       } catch (error) {
         app.log.debug({ err: error, source }, 'translation endpoint fallback');
@@ -583,7 +693,14 @@ async function translateToEnglish(text) {
     }
 
     const fallback = normalizeTranslatedTitle(applyTranslationDictionary(source));
-    return fallback || source;
+    if (fallback) {
+      candidates.push(fallback);
+    }
+
+    const best = pickBestTranslation(source, candidates) || source;
+    setCachedTranslation(source, best);
+    persistTitleTranslationSafe(source, best);
+    return best;
   })();
 
   translateInFlight.set(source, job);
@@ -710,14 +827,30 @@ app.post('/api/translate/titles', {
 }, async (request) => {
   const titles = sanitizeTitles(Array.isArray(request.body?.titles) ? request.body.titles : []);
 
-  const items = await mapWithConcurrency(
-    titles,
+  let persistedMap = new Map();
+  try {
+    persistedMap = getCachedTitleTranslations(titles);
+  } catch (error) {
+    app.log.warn({ err: error }, 'failed to read translation cache batch');
+  }
+
+  const pending = titles.filter((title) => !persistedMap.has(title));
+
+  const translatedPending = await mapWithConcurrency(
+    pending,
     async (title) => {
       const translated = await translateToEnglish(title);
       return { original: title, translated };
     },
     TRANSLATE_CONCURRENCY
   );
+
+  const pendingMap = new Map(translatedPending.map((row) => [row.original, row.translated]));
+
+  const items = titles.map((title) => ({
+    original: title,
+    translated: persistedMap.get(title) || pendingMap.get(title) || title
+  }));
 
   return { items };
 });

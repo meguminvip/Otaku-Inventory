@@ -36,3 +36,13 @@ CREATE TABLE IF NOT EXISTS notification_logs (
   status TEXT,
   FOREIGN KEY (goods_id) REFERENCES goods_items(id)
 );
+
+CREATE TABLE IF NOT EXISTS title_translations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  original_title TEXT NOT NULL UNIQUE,
+  translated_title TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_title_translations_updated_at ON title_translations(updated_at DESC);

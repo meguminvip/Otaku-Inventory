@@ -184,6 +184,49 @@ function escapeLikeTerm(value) {
     .replace(/_/g, '\\_');
 }
 
+function normalizeTranslationTitle(value) {
+  return `${value || ''}`.trim().slice(0, 300);
+}
+
+export function getCachedTitleTranslation(title) {
+  const original = normalizeTranslationTitle(title);
+  if (!original) return '';
+
+  const row = db
+    .prepare('SELECT translated_title FROM title_translations WHERE original_title = ? LIMIT 1')
+    .get(original);
+
+  return row?.translated_title || '';
+}
+
+export function getCachedTitleTranslations(titles = []) {
+  const normalized = [...new Set((titles || []).map((v) => normalizeTranslationTitle(v)).filter(Boolean))];
+  if (!normalized.length) {
+    return new Map();
+  }
+
+  const rows = db
+    .prepare(`SELECT original_title, translated_title FROM title_translations WHERE original_title IN (${normalized.map(() => '?').join(', ')})`)
+    .all(...normalized);
+
+  return new Map(rows.map((row) => [row.original_title, row.translated_title]));
+}
+
+export function upsertTitleTranslation(originalTitle, translatedTitle) {
+  const original = normalizeTranslationTitle(originalTitle);
+  const translated = normalizeTranslationTitle(translatedTitle);
+
+  if (!original || !translated) return;
+
+  db.prepare(
+    `INSERT INTO title_translations (original_title, translated_title)
+     VALUES (?, ?)
+     ON CONFLICT(original_title) DO UPDATE SET
+       translated_title = excluded.translated_title,
+       updated_at = CURRENT_TIMESTAMP`
+  ).run(original, translated);
+}
+
 export function getAllGoods(limit, offset) {
   const safeLimit = toSafeLimit(limit);
   const safeOffset = toSafeOffset(offset);

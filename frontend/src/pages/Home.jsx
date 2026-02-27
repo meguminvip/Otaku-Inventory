@@ -47,6 +47,7 @@ export default function Home({ initialFavoritesOnly = false }) {
   const [favoriteItemsByKey, setFavoriteItemsByKey] = useState({});
   const [translatedTitles, setTranslatedTitles] = useState({});
   const translatedTitlesRef = useRef({});
+  const goodsRequestIdRef = useRef(0);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(initialFavoritesOnly);
   const isInitialLoading = loading && goods.length === 0;
 
@@ -106,6 +107,7 @@ export default function Home({ initialFavoritesOnly = false }) {
   };
 
   const fetchGoods = async (activeFilters, targetPage = 1) => {
+    const requestId = ++goodsRequestIdRef.current;
     setLoading(true);
     setSearching(false);
     setErrorMessage('');
@@ -119,6 +121,7 @@ export default function Home({ initialFavoritesOnly = false }) {
       params.per_page = 24;
 
       const [goodsRes, statsRes] = await Promise.all([api.get('/goods', { params }), api.get('/stats')]);
+      if (requestId !== goodsRequestIdRef.current) return;
       setGoods(goodsRes.data.items || []);
       syncFavoriteItemCache(goodsRes.data.items || []);
       setPage(goodsRes.data.page || targetPage);
@@ -127,16 +130,20 @@ export default function Home({ initialFavoritesOnly = false }) {
       setStats(nextStats);
       syncLastUpdated(nextStats?.last_updated);
     } catch {
+      if (requestId !== goodsRequestIdRef.current) return;
       setErrorMessage(t('load_error'));
       setGoods([]);
       setPage(1);
       setTotalPages(1);
     } finally {
-      setLoading(false);
+      if (requestId === goodsRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   };
 
   const fetchFavoriteGoods = async () => {
+    const requestId = ++goodsRequestIdRef.current;
     setLoading(true);
     setSearching(false);
     setErrorMessage('');
@@ -146,6 +153,7 @@ export default function Home({ initialFavoritesOnly = false }) {
         api.post('/goods/by-urls', { urls: urlKeys }),
         api.get('/stats')
       ]);
+      if (requestId !== goodsRequestIdRef.current) return;
 
       const fetched = favRes.data.items || [];
       syncFavoriteItemCache(fetched, favoriteKeys);
@@ -156,12 +164,15 @@ export default function Home({ initialFavoritesOnly = false }) {
       setPage(1);
       setTotalPages(1);
     } catch {
+      if (requestId !== goodsRequestIdRef.current) return;
       setErrorMessage(t('load_error'));
       setGoods([]);
       setPage(1);
       setTotalPages(1);
     } finally {
-      setLoading(false);
+      if (requestId === goodsRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -169,13 +180,13 @@ export default function Home({ initialFavoritesOnly = false }) {
     if (showFavoritesOnly) {
       fetchFavoriteGoods();
     }
-  }, [showFavoritesOnly, favoriteKeys]);
+  }, [showFavoritesOnly, favoriteKeys, lang]);
 
   useEffect(() => {
     if (!showFavoritesOnly) {
       fetchGoods(filters, 1);
     }
-  }, [filters, showFavoritesOnly]);
+  }, [filters, showFavoritesOnly, lang]);
 
   useLayoutEffect(() => {
     const ctx = gsap.context(() => {
@@ -234,22 +245,27 @@ export default function Home({ initialFavoritesOnly = false }) {
       fetchGoods(filters, 1);
       return;
     }
+    const requestId = ++goodsRequestIdRef.current;
     setLoading(true);
     setSearching(true);
     setErrorMessage('');
     try {
       const res = await api.get('/search', { params: { q: keyword } });
+      if (requestId !== goodsRequestIdRef.current) return;
       setGoods(res.data.items || []);
       syncFavoriteItemCache(res.data.items || []);
       setPage(1);
       setTotalPages(1);
     } catch {
+      if (requestId !== goodsRequestIdRef.current) return;
       setErrorMessage(t('load_error'));
       setGoods([]);
       setPage(1);
       setTotalPages(1);
     } finally {
-      setLoading(false);
+      if (requestId === goodsRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   };
 

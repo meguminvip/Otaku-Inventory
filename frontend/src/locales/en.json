@@ -1,6 +1,5 @@
 {
-  "nav_home_short": "Home",
-  "nav_list": "Catalog",
+  "nav_list": "Home",
   "nav_favorites": "Favorites",
   "footer_notice": "Notice",
   "footer_terms": "Terms",
@@ -237,7 +236,7 @@
   "ack_security_ref_label": "IPA: How to Secure Your Website",
   "category_figure": "Figure",
   "category_acrylic_stand": "Acrylic Stand",
-  "category_keyholder": "KeyChain",
+  "category_keyholder": "Keychain",
   "category_bag": "Bag",
   "category_pass_case": "Pass Case",
   "category_cup_glass": "Mug / Glass",
