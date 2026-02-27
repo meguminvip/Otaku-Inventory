@@ -81,7 +81,7 @@ body {
   word-break: break-word;
   flex: 1 1 auto;
 }
-
+/*
 .announcement-link {
   color: #154f68;
   font-weight: 700;
@@ -92,7 +92,7 @@ body {
 .announcement-link:hover {
   color: #0c3f54;
 }
-
+*/
 .announcement-cta {
   flex: 0 0 auto;
   align-self: center;

@@ -1,5 +1,4 @@
 import { HiSpeakerphone } from 'react-icons/hi';
-import { NavLink } from 'react-router-dom';
 import { useI18n } from '../hooks/useI18n.js';
 
 /**
@@ -10,7 +9,7 @@ const announcements = [
   {
     id: 'notice-1',
     active: true,
-    text: 'お知らせ: 新カテゴリ「キーホルダー」を追加しました。'
+    text: '現在のお知らせはありません。 This Announcement Bar is only use fallbacks'
   }
 ];
 
@@ -28,9 +27,11 @@ export default function AnnouncementBar() {
           <HiSpeakerphone />
         </span>
         <p>{t('announcement_text') || notice.text}</p>
-        <NavLink to="/notices/cospa-update" className="announcement-cta">
-          {t('announcement_link_text')}
-        </NavLink>
+        {/*
+          <NavLink to="/notices/cospa-update" className="announcement-cta">
+            {t('announcement_link_text')}
+          </NavLink>
+        */}
       </div>
     </div>
   );
