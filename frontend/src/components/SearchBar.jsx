@@ -19,21 +19,23 @@ export default function SearchBar({ onSearch, onReset }) {
       }}
     >
       <input value={value} onChange={(e) => setValue(e.target.value)} placeholder={t('search_placeholder')} />
-      <button type="submit" className="action-btn">
-        <HiSearch />
-        {t('search_button')}
-      </button>
-      <button
-        type="button"
-        className="action-btn ghost-btn"
-        onClick={() => {
-          setValue('');
-          onReset();
-        }}
-      >
-        <HiOutlineRefresh />
-        {t('clear_button')}
-      </button>
+      <div className="search-actions">
+        <button type="submit" className="action-btn">
+          <HiSearch />
+          {t('search_button')}
+        </button>
+        <button
+          type="button"
+          className="action-btn ghost-btn"
+          onClick={() => {
+            setValue('');
+            onReset();
+          }}
+        >
+          <HiOutlineRefresh />
+          {t('clear_button')}
+        </button>
+      </div>
     </form>
   );
 }

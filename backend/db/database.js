@@ -188,6 +188,10 @@ function normalizeTranslationTitle(value) {
   return `${value || ''}`.trim().slice(0, 300);
 }
 
+function normalizeIpHash(value) {
+  return `${value || ''}`.trim().slice(0, 128);
+}
+
 export function getCachedTitleTranslation(title) {
   const original = normalizeTranslationTitle(title);
   if (!original) return '';
@@ -253,6 +257,28 @@ export function upsertTitleTranslations(pairs = []) {
 
   tx();
   return rows.length;
+}
+
+export function hasSiteSupportClickByIpHash(ipHash) {
+  const safeHash = normalizeIpHash(ipHash);
+  if (!safeHash) return false;
+
+  const row = db
+    .prepare('SELECT 1 AS found FROM site_support_clicks WHERE ip_hash = ? LIMIT 1')
+    .get(safeHash);
+
+  return Boolean(row?.found);
+}
+
+export function insertSiteSupportClickByIpHash(ipHash) {
+  const safeHash = normalizeIpHash(ipHash);
+  if (!safeHash) {
+    return { changes: 0 };
+  }
+
+  return db
+    .prepare('INSERT OR IGNORE INTO site_support_clicks (ip_hash) VALUES (?)')
+    .run(safeHash);
 }
 
 export function getAllGoods(limit, offset) {

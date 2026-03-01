@@ -13,6 +13,7 @@ import NoticesPage from './pages/notices/NoticesPage.jsx';
 import NoticePage from './pages/notices/NoticePolicyPage.jsx';
 import ScrapingSpecPage from './pages/notices/ScrapingSpecPage.jsx';
 import SitePolicyPage from './pages/notices/SitePolicyPage.jsx';
+import ServiceStatusPage from './pages/notices/ServiceStatusPage.jsx';
 import TermsPage from './pages/TermsPage.jsx';
 import PrivacyPage from './pages/PrivacyPage.jsx';
 import SourcesPage from './pages/SourcesPage.jsx';
@@ -24,10 +25,19 @@ import './styles/app.css';
  */
 
 const LAST_UPDATED_KEY = 'otaku_inventory_last_updated';
+const SERVICE_STATUS_POPUP_HIDE_KEY = 'otaku_inventory_hide_service_status_popup';
 
 function AppShell() {
   const { lang, setLang, t } = useI18n();
   const [lastUpdated, setLastUpdated] = useState(() => localStorage.getItem(LAST_UPDATED_KEY) || '');
+  const [showServiceStatusPopup, setShowServiceStatusPopup] = useState(() => {
+    try {
+      return localStorage.getItem(SERVICE_STATUS_POPUP_HIDE_KEY) !== '1';
+    } catch {
+      return true;
+    }
+  });
+  const [dontShowServiceStatusPopup, setDontShowServiceStatusPopup] = useState(false);
 
   const formattedLastUpdated = useMemo(() => {
     if (!lastUpdated) return '--';
@@ -60,32 +70,6 @@ function AppShell() {
     return () => {
       window.removeEventListener('otaku:last-updated', onCustomUpdate);
       window.removeEventListener('storage', onStorage);
-    };
-  }, []);
-
-  useEffect(() => {
-    let wasOpen = false;
-    const threshold = 160;
-
-    const checkDevtools = () => {
-      const widthGap = window.outerWidth - window.innerWidth;
-      const heightGap = window.outerHeight - window.innerHeight;
-      const isOpen = widthGap > threshold || heightGap > threshold;
-
-      if (isOpen && !wasOpen) {
-        console.log('Why Watching Me!');
-      }
-
-      wasOpen = isOpen;
-    };
-
-    const timerId = window.setInterval(checkDevtools, 1000);
-    window.addEventListener('resize', checkDevtools);
-    checkDevtools();
-
-    return () => {
-      window.clearInterval(timerId);
-      window.removeEventListener('resize', checkDevtools);
     };
   }, []);
 
@@ -133,12 +117,47 @@ function AppShell() {
     };
   }, []);
 
+  const closeServiceStatusPopup = () => {
+    setShowServiceStatusPopup(false);
+    if (dontShowServiceStatusPopup) {
+      try {
+        localStorage.setItem(SERVICE_STATUS_POPUP_HIDE_KEY, '1');
+      } catch {
+        // ignore storage failures
+      }
+    }
+  };
+
   return (
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <div className="app">
         <div className="bg-orb bg-orb-a" />
         <div className="bg-orb bg-orb-b" />
         <AnnouncementBar />
+        {showServiceStatusPopup ? (
+          <div className="status-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="site-status-title">
+            <section className="status-modal panel-card">
+              <h2 id="site-status-title">{t('service_status_popup_title')}</h2>
+              <p>{t('service_status_popup_body')}</p>
+              <label className="status-modal-optout">
+                <input
+                  type="checkbox"
+                  checked={dontShowServiceStatusPopup}
+                  onChange={(e) => setDontShowServiceStatusPopup(e.target.checked)}
+                />
+                <span>{t('service_status_popup_never')}</span>
+              </label>
+              <div className="status-modal-actions">
+                <NavLink to="/notices/service-status" className="action-btn" onClick={closeServiceStatusPopup}>
+                  {t('service_status_popup_link')}
+                </NavLink>
+                <button type="button" className="action-btn ghost-btn" onClick={closeServiceStatusPopup}>
+                  {t('service_status_popup_close')}
+                </button>
+              </div>
+            </section>
+          </div>
+        ) : null}
         <nav className="navbar">
           <div className="container nav-inner nav-inner-balanced">
             <div className="nav-links nav-links-primary">
@@ -190,6 +209,7 @@ function AppShell() {
             <Route path="/notices/policy" element={<NoticePage />} />
             <Route path="/notices/cospa-update" element={<CospaUpdateNoticePage />} />
             <Route path="/notices/scraping-spec" element={<ScrapingSpecPage />} />
+            <Route path="/notices/service-status" element={<ServiceStatusPage />} />
             <Route path="/notice" element={<Navigate to="/notices/policy" replace />} />
             <Route path="/notice/cospa-update" element={<Navigate to="/notices/cospa-update" replace />} />
             <Route path="/contact" element={<ContactPage />} />
@@ -201,7 +221,7 @@ function AppShell() {
         </main>
         <footer className="footer">
           <div className="container footer-inner">
-            <div>© 2026 h_ypi / A.R.O.N.A Coding Assistant</div>
+            <div>© 2026 h_ypi / A.R.O.N.A</div>
             <div className="footer-links">
               <NavLink to="/notices">
                 <HiExclamation />

@@ -7,16 +7,18 @@ import {
   getCachedTitleTranslations,
   getGoodsByUrls,
   getGoodsPage,
+  hasSiteSupportClickByIpHash,
+  insertSiteSupportClickByIpHash,
   getRecentGoods,
   getStats,
   searchGoods,
   upsertTitleTranslation,
   upsertTitleTranslations
 } from './db/database.js';
-import { importFromJson } from './utils/importer.js';
-import { createHash, timingSafeEqual } from 'crypto';
-import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
+import {importFromJson} from './utils/importer.js';
+import {createHash, timingSafeEqual} from 'crypto';
+import {dirname, join} from 'path';
+import {fileURLToPath} from 'url';
 
 /**
  * Authors: h_ypi and A.R.O.N.A
@@ -51,7 +53,13 @@ const ALLOWED_SOURCE = new Set(['', 'animate', 'kadokawa', 'cospa', 'charaon']);
 const MAX_TRANSLATION_CACHE_SIZE = 8000;
 const titleTranslationCache = new Map();
 const translateInFlight = new Map();
-const STRICT_POST_PATHS = new Set(['/api/feedback', '/api/import', '/api/translate/titles', '/api/goods/by-urls']);
+const STRICT_POST_PATHS = new Set([
+  '/api/feedback',
+  '/api/import',
+  '/api/translate/titles',
+  '/api/goods/by-urls',
+  '/api/service-support'
+]);
 const feedbackSpamCache = new Map();
 
 const SEARCH_ALIAS_MAP = {
@@ -381,7 +389,11 @@ function persistTitleTranslationSafe(source, translated) {
   try {
     upsertTitleTranslation(source, translated);
   } catch (error) {
-    app.log.warn({ err: error }, 'failed to persist translation cache');
+    app.log.warn({
+          err: error
+    },
+        'failed to persist translation cache'
+    );
   }
 }
 
@@ -455,10 +467,7 @@ function isLikelySpamMessage(value) {
   const repeatedChar = /(.)\1{24,}/.test(text);
   if (repeatedChar) return true;
 
-  const tooManyLinks = (text.match(/https?:\/\//gi) || []).length >= 6;
-  if (tooManyLinks) return true;
-
-  return false;
+  return (text.match(/https?:\/\//gi) || []).length >= 6;
 }
 
 function isSpamFeedback(clientKey, message) {
@@ -524,7 +533,7 @@ function hasJsonContentType(contentType) {
 }
 
 function isAllowedOrigin(origin) {
-  if (!origin) return true;
+  if (!origin) return false;
   return allowedOrigins.includes(origin);
 }
 
@@ -532,15 +541,14 @@ function sanitizeCategory(value) {
   return `${value || ''}`.trim().slice(0, 60);
 }
 
-const defaultOrigins = [
+const allowedOrigins = [
   'https://megumin.vip',
   'https://www.megumin.vip',
-  'https://api.megumin.vip',
   'http://localhost:5173',
-  'http://127.0.0.1:5173'
+  'http://127.0.0.1:5173',
+  'http://localhost:4173',
+  'http://127.0.0.1:4173'
 ];
-
-const allowedOrigins = parseCsvList(process.env.CORS_ORIGINS || defaultOrigins.join(','));
 
 const app = Fastify({
   logger: true,
@@ -552,10 +560,6 @@ await app.register(cors, {
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['content-type', 'authorization'],
   origin(origin, callback) {
-    if (!origin) {
-      callback(null, true);
-      return;
-    }
     callback(null, allowedOrigins.includes(origin));
   }
 });
@@ -574,6 +578,15 @@ app.addHook('onRequest', async (request, reply) => {
 
   if (request.raw.url?.startsWith('/api/')) {
     reply.header('Cache-Control', 'no-store');
+
+    const origin = `${request.headers.origin || ''}`.trim();
+    if (!isAllowedOrigin(origin)) {
+      reply.code(403).send({
+        success: false,
+        error: 'Forbidden origin'
+      });
+      return;
+    }
   }
 });
 
@@ -610,7 +623,6 @@ app.addHook('preHandler', async (request, reply) => {
       success: false,
       error: 'Forbidden origin'
     });
-    return;
   }
 });
 
@@ -870,6 +882,87 @@ app.post('/api/translate/titles', {
   }));
 
   return { items };
+});
+
+app.post('/api/service-support', {
+  config: {
+    rateLimit: {
+      max: 12,
+      timeWindow: '1 minute'
+    }
+  }
+}, async (request, reply) => {
+  const normalizedIp = normalizeIp(request.ip) || 'unknown';
+  const ipHash = hashText(`service-support:${normalizedIp}`);
+
+  try {
+    if (hasSiteSupportClickByIpHash(ipHash)) {
+      reply.code(409);
+      return {
+        success: false,
+        error: 'Already submitted from this network'
+      };
+    }
+
+    const inserted = insertSiteSupportClickByIpHash(ipHash);
+    if (!inserted?.changes) {
+      reply.code(409);
+      return {
+        success: false,
+        error: 'Already submitted from this network'
+      };
+    }
+  } catch (error) {
+    request.log.error(error);
+    reply.code(500);
+    return {
+      success: false,
+      error: 'Failed to record support'
+    };
+  }
+
+  let notified = false;
+
+  if (DISCORD_WEBHOOK_URL) {
+    const payload = {
+      content: '先生！ 継続希望ボタンが押されました！',
+      allowed_mentions: {
+        parse: []
+      },
+      embeds: [
+        {
+          title: '継続希望リアクション',
+          description: '「維持する可能性が上がるかもしれない」ボタンが押されました。',
+          fields: [
+            {
+              name: 'IP(匿名化)',
+              value: anonymizeIp(request.ip)
+            }
+          ]
+        }
+      ]
+    };
+
+    try {
+      const webhookRes = await fetch(DISCORD_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(10000)
+      });
+      notified = webhookRes.ok;
+      if (!webhookRes.ok) {
+        request.log.warn({ status: webhookRes.status }, 'service support webhook failed');
+      }
+    } catch (error) {
+      request.log.warn({ err: error }, 'service support webhook error');
+    }
+  }
+
+  return {
+    success: true,
+    notified
+  };
 });
 
 app.post('/api/feedback', {

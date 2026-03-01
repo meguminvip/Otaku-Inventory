@@ -46,3 +46,11 @@ CREATE TABLE IF NOT EXISTS title_translations (
 );
 
 CREATE INDEX IF NOT EXISTS idx_title_translations_updated_at ON title_translations(updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS site_support_clicks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ip_hash TEXT NOT NULL UNIQUE,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_site_support_created_at ON site_support_clicks(created_at DESC);
