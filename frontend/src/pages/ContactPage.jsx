@@ -57,9 +57,6 @@ export default function ContactPage() {
           <strong>{t('contact_general')}</strong>: <a href="mailto:contact@megumin.vip">contact@megumin.vip</a>
         </li>
         <li>
-          <strong>{t('contact_support')}</strong>: <a href="mailto:support@megumin.vip">support@megumin.vip</a>
-        </li>
-        <li>
           <strong>{t('contact_emergency')}</strong>: <a href="mailto:koumazuiitimegumin@gmail.com">koumazuiitimegumin@gmail.com</a>
         </li>
       </ul>

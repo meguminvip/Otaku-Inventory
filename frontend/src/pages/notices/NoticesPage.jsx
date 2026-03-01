@@ -10,6 +10,12 @@ export default function NoticesPage() {
 
   const items = [
     {
+      key: 'service-status',
+      title: t('notices_item_service_status_title'),
+      desc: t('notices_item_service_status_desc'),
+      to: '/notices/service-status'
+    },
+    {
       key: 'site-policy',
       title: t('notices_item_site_policy_title'),
       desc: t('notices_item_site_policy_desc'),
